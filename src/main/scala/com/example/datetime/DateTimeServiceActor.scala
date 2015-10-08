@@ -38,13 +38,18 @@ class DateTimeServiceActor extends Actor with HttpService with SprayJsonSupport{
           authorizationResult.status match {
             case StatusCodes.OK =>
               respondWithMediaType(`application/json`) {
-                complete {
-                  DateTimeResult("2015-05-13 12:00:00")
+                respondWithStatus(StatusCodes.OK) {
+                  complete {
+                    DateTimeResult("2015-05-13 12:00:00")
+                  }
                 }
               }
             case _ => respondWithMediaType(`application/json`) {
-              complete {
-                AuthenticationFailure("not authorized")
+              respondWithStatus(StatusCodes.Unauthorized){
+                complete {
+                  val unmarshaller: (HttpResponse) => AuthenticationFailure = unmarshal[AuthenticationFailure]
+                  AuthenticationFailure(unmarshaller(authorizationResult).error)
+                }
               }
             }
           }

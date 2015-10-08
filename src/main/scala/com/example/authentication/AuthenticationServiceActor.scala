@@ -7,6 +7,7 @@ import akka.util.Timeout
 import com.typesafe.config.{Config, ConfigFactory}
 import spray.can.Http
 import spray.http.MediaTypes._
+import spray.http.StatusCodes
 import spray.httpx.SprayJsonSupport
 import spray.json.DefaultJsonProtocol
 import spray.routing.{HttpService, Route}
@@ -25,35 +26,52 @@ class AuthenticationServiceActor extends Actor with HttpService with SprayJsonSu
   import JsonImplicits._
 
   def receive: Receive = runRoute(
-    path("token"){
-      get{
-        parameters('userName , 'userPassword){(userName, userPassword)=>
-            respondWithMediaType(`application/json`){
-              checkAuthentication(userName, userPassword)
+    respondWithMediaType(`application/json`) {
+      path("token" / "refresh"){
+        get{
+          parameters('token){token: String=>
+            if(token=="716348726348"){
+              respondWithStatus(StatusCodes.OK){
+                complete{
+                  AuthenticationSuccess("1")
+                }
+              }
+            }else{
+              respondWithStatus(StatusCodes.Unauthorized){
+                complete{
+                  AuthenticationFailure("not authorized")
+                }
+              }
             }
-        }
-      }
-    }~
-    path("check"){
-      get{
-        parameters('token){token=>
-          respondWithMediaType(`application/json`){
-            checkToken(token)
           }
         }
-      }
+      } ~
+      path("token") {
+        get {
+          parameters('userName, 'userPassword) { (userName, userPassword) =>
+              checkAuthentication(userName, userPassword)
+          }
+        }
+      } ~
+        path("check") {
+          get {
+            parameters('token) { token =>
+              checkToken(token)
+            }
+          }
+        }
     }
     )
 
   def checkAuthentication(userName: String, userPassword: String): Route = {
     if(userName == CredentialsHolder.userName && userPassword==CredentialsHolder.userPassword) {
-      respondWithStatus(200) {
+      respondWithStatus(StatusCodes.OK) {
        complete{
          AuthenticationSuccess("716348726348")
         }
       }
     } else {
-      respondWithStatus(401) {
+      respondWithStatus(StatusCodes.Unauthorized) {
         complete {
           AuthenticationFailure("not authorized")
         }
@@ -66,6 +84,12 @@ class AuthenticationServiceActor extends Actor with HttpService with SprayJsonSu
       respondWithStatus(200) {
         complete{
           AuthenticationSuccess(token)
+        }
+      }
+    } else if(token=="12"){
+      respondWithStatus(401) {
+        complete {
+          AuthenticationFailure("token expired")
         }
       }
     } else {
