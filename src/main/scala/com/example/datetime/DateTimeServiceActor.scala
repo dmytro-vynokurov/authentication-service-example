@@ -5,16 +5,16 @@ import akka.io.IO
 import akka.pattern.ask
 import akka.util.Timeout
 import spray.can.Http
+import spray.client.pipelining._
 import spray.http.MediaTypes._
+import spray.http._
 import spray.httpx.SprayJsonSupport
 import spray.json.DefaultJsonProtocol
-import spray.routing.HttpService
-import spray.http._
-import spray.client.pipelining._
+import spray.routing.RejectionHandler.Default
+import spray.routing._
 
-import scala.concurrent.Future
+import scala.concurrent.Await
 import scala.concurrent.duration._
-import scala.util.{Failure, Success}
 
 case class DateTimeResult(datetime: String)
 case class AuthenticationFailure(error:String)
@@ -33,29 +33,28 @@ class DateTimeServiceActor extends Actor with HttpService with SprayJsonSupport{
   override def receive: Receive = runRoute(path("datetime"){
     get{
       headerValueByName("Authorization"){token: String=>
-        detach() {ctx=>
-          pipeline(Get("http://localhost:8020/")).onComplete {
-            case Success(response) => response.status match {
-              case StatusCodes.OK =>
-                respondWithMediaType(`application/json`) {
-                  ctx.complete {
-                    DateTimeResult("2015-05-13 12:00:00")
-                  }
-                }
-              case _ =>  respondWithMediaType(`application/json`) {
-                ctx.complete {
-                  AuthenticationFailure("not authorized")
+        detach(context.system.dispatcher) {
+          val authorizationResult: HttpResponse = Await.result(pipeline(Get(s"http://localhost:8020/check?token=$token")), 20.seconds)
+          authorizationResult.status match {
+            case StatusCodes.OK =>
+              respondWithMediaType(`application/json`) {
+                complete {
+                  DateTimeResult("2015-05-13 12:00:00")
                 }
               }
+            case _ => respondWithMediaType(`application/json`) {
+              complete {
+                AuthenticationFailure("not authorized")
+              }
             }
-            case Failure(_) => AuthenticationFailure("could not authenticate")
           }
         }
       }
     }
   })
 
-  override implicit def actorRefFactory: ActorRefFactory = context
+  implicit def actorRefFactory: ActorRefFactory = context
+  implicit val system = context.system
 }
 
 object DateTimeServiceRunner extends App{
